@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { Metadata } from "next";
 import { APP_CONFIG } from "@/lib/constants";
 import { LoginForm } from "./_components/LoginForm";
@@ -30,7 +31,16 @@ export default function LoginPage() {
 
         {/* Login Card */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
-          <LoginForm />
+          {/* Suspense required because LoginForm uses useSearchParams */}
+          <Suspense
+            fallback={
+              <div className="flex justify-center py-8">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-gray-900 border-t-transparent" />
+              </div>
+            }
+          >
+            <LoginForm />
+          </Suspense>
         </div>
 
         {/* Footer */}
