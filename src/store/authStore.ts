@@ -1,13 +1,18 @@
 import { create } from "zustand";
-import { devtools, persist } from "zustand/middleware";
+import { devtools } from "zustand/middleware";
 import type { User } from "@supabase/supabase-js";
 import type { AdminProfile } from "@/types";
 
+// ─── State Shape ───────────────────────────────────────────────────────────────
+
 interface AuthState {
+  // ── State ──────────────────────────────────────────────────────────────────
   user: User | null;
   adminProfile: AdminProfile | null;
   isLoading: boolean;
   isInitialized: boolean;
+
+  // ── Actions ────────────────────────────────────────────────────────────────
   setUser: (user: User | null) => void;
   setAdminProfile: (profile: AdminProfile | null) => void;
   setLoading: (loading: boolean) => void;
@@ -15,49 +20,58 @@ interface AuthState {
   reset: () => void;
 }
 
-const initialState = {
-  user: null,
-  adminProfile: null,
-  isLoading: false,
-  isInitialized: false,
-};
+// ─── Store ─────────────────────────────────────────────────────────────────────
 
 export const useAuthStore = create<AuthState>()(
   devtools(
-    persist(
-      (set) => ({
-        ...initialState,
+    (set) => ({
+      // ── Initial state ───────────────────────────────────────────────────────
+      user: null,
+      adminProfile: null,
+      isLoading: false,
+      isInitialized: false,
 
-        setUser: (user) => set({ user }, false, "auth/setUser"),
+      // ── Actions ─────────────────────────────────────────────────────────────
 
-        setAdminProfile: (adminProfile) =>
-          set({ adminProfile }, false, "auth/setAdminProfile"),
+      setUser: (user) => set({ user }, false, "auth/setUser"),
 
-        setLoading: (isLoading) => set({ isLoading }, false, "auth/setLoading"),
+      setAdminProfile: (adminProfile) =>
+        set({ adminProfile }, false, "auth/setAdminProfile"),
 
-        setInitialized: (isInitialized) =>
-          set({ isInitialized }, false, "auth/setInitialized"),
+      setLoading: (isLoading) => set({ isLoading }, false, "auth/setLoading"),
 
-        reset: () =>
-          set({ ...initialState, isInitialized: true }, false, "auth/reset"),
-      }),
-      {
-        name: "adithya-admin-auth", // localStorage key
-        // Only persist user and adminProfile — not loading states
-        partialize: (state) => ({
-          user: state.user,
-          adminProfile: state.adminProfile,
-          isInitialized: state.isInitialized,
-        }),
-      }
-    ),
-    { name: "AuthStore" }
+      setInitialized: (isInitialized) =>
+        set({ isInitialized }, false, "auth/setInitialized"),
+
+      // reset sets isInitialized: true intentionally —
+      // so the UI never gets stuck showing the skeleton
+      // after a failed auth or sign out
+      reset: () =>
+        set(
+          {
+            user: null,
+            adminProfile: null,
+            isLoading: false,
+            isInitialized: true,
+          },
+          false,
+          "auth/reset"
+        ),
+    }),
+    {
+      name: "AuthStore",
+    }
   )
 );
+
+// ─── Selectors ─────────────────────────────────────────────────────────────────
+// Use selectors in components to prevent unnecessary re-renders.
+// Component only re-renders when the specific piece of state it
+// subscribes to actually changes.
 
 export const selectUser = (state: AuthState) => state.user;
 export const selectAdminProfile = (state: AuthState) => state.adminProfile;
 export const selectIsLoading = (state: AuthState) => state.isLoading;
 export const selectIsInitialized = (state: AuthState) => state.isInitialized;
 export const selectIsAuthenticated = (state: AuthState) =>
-  state.isInitialized && !!state.user;
+  !!state.user && !!state.adminProfile;

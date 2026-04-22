@@ -1,7 +1,7 @@
 "use client";
 
 import { createClient, resetClient } from "@/lib/supabase/client";
-import { useEffect, useCallback } from "react";
+import { useEffect, useCallback, useRef } from "react";
 import {
   useAuthStore,
   selectUser,
@@ -30,6 +30,7 @@ interface UseAuthReturn {
 
 export function useAuth(): UseAuthReturn {
   const supabase = createClient();
+  const hasInitialized = useRef(false);
 
   const user = useAuthStore(selectUser);
   const adminProfile = useAuthStore(selectAdminProfile);
@@ -40,92 +41,88 @@ export function useAuth(): UseAuthReturn {
   const { setUser, setAdminProfile, setLoading, setInitialized, reset } =
     useAuthStore();
 
+  // ─── Fetch admin profile ──────────────────────────────────────────────────
+
   const fetchAdminProfile = useCallback(
     async (userId: string): Promise<AdminProfile | null> => {
-      const { data, error } = await supabase
-        .from("admin_profiles")
-        .select("*")
-        .eq("id", userId)
-        .single();
+      try {
+        const { data, error } = await supabase
+          .from("admin_profiles")
+          .select("*")
+          .eq("id", userId)
+          .single();
 
-      if (error || !data) {
-        console.error("[useAuth] fetchAdminProfile error:", error?.message);
+        if (error || !data) {
+          console.error("[useAuth] fetchAdminProfile:", error?.message);
+          return null;
+        }
+        return data as AdminProfile;
+      } catch {
         return null;
       }
-
-      return data as AdminProfile;
     },
     [supabase]
   );
 
+  // ─── Auth listener — single source of truth ───────────────────────────────
+  // onAuthStateChange fires INITIAL_SESSION on mount with the existing session
+  // This replaces the manual getSession() call entirely
+
   useEffect(() => {
+    if (hasInitialized.current) return;
+    hasInitialized.current = true;
+
     let isMounted = true;
-
-    async function initializeSession() {
-      try {
-        // getSession reads from cookies — fast, no network call
-        const {
-          data: { session },
-        } = await supabase.auth.getSession();
-
-        if (!isMounted) return;
-
-        if (!session?.user) {
-          reset();
-          return;
-        }
-
-        // If we already have the profile in store — skip fetching
-        if (user?.id === session.user.id && adminProfile) {
-          setInitialized(true);
-          return;
-        }
-
-        const profile = await fetchAdminProfile(session.user.id);
-
-        if (!isMounted) return;
-
-        if (!profile || !profile.is_active) {
-          await supabase.auth.signOut();
-          reset();
-          return;
-        }
-
-        setUser(session.user);
-        setAdminProfile(profile);
-      } catch (err) {
-        console.error("[useAuth] initializeSession error:", err);
-        if (isMounted) reset();
-      } finally {
-        if (isMounted) setInitialized(true);
-      }
-    }
-
-    initializeSession();
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
 
-      if (event === "SIGNED_OUT" || !session?.user) {
+      console.log(
+        "[useAuth] event:",
+        event,
+        "user:",
+        session?.user?.id ?? "none"
+      );
+
+      // INITIAL_SESSION fires on every mount with the current session state
+      // SIGNED_IN fires after login
+      // TOKEN_REFRESHED fires when JWT is auto-refreshed
+      // SIGNED_OUT fires after logout
+      if (event === "SIGNED_OUT") {
         reset();
         return;
       }
 
-      if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-        const profile = await fetchAdminProfile(session.user.id);
-
-        if (!profile || !profile.is_active) {
-          await supabase.auth.signOut();
-          reset();
-          return;
-        }
-
-        setUser(session.user);
-        setAdminProfile(profile);
-        setInitialized(true);
+      if (!session?.user) {
+        // No session — mark initialized so UI stops showing skeleton
+        reset();
+        return;
       }
+
+      // We have a session — check if we already have this user's profile loaded
+      const state = useAuthStore.getState();
+      if (state.user?.id === session.user.id && state.adminProfile) {
+        // Already have everything — just mark initialized
+        setInitialized(true);
+        return;
+      }
+
+      // Fetch admin profile
+      const profile = await fetchAdminProfile(session.user.id);
+
+      if (!isMounted) return;
+
+      if (!profile || !profile.is_active) {
+        await supabase.auth.signOut();
+        reset();
+        return;
+      }
+
+      setUser(session.user);
+      setAdminProfile(profile);
+      setInitialized(true);
     });
 
     return () => {
@@ -133,6 +130,8 @@ export function useAuth(): UseAuthReturn {
       subscription.unsubscribe();
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ─── Login ────────────────────────────────────────────────────────────────
 
   const login = useCallback(
     async (
@@ -185,6 +184,8 @@ export function useAuth(): UseAuthReturn {
       setInitialized,
     ]
   );
+
+  // ─── Logout ───────────────────────────────────────────────────────────────
 
   const logout = useCallback(async (): Promise<void> => {
     try {

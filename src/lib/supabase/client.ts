@@ -1,20 +1,34 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { Database } from "@/types/database";
 
-/**
- * Creates a Supabase browser client.
- * @supabase/ssr's createBrowserClient already handles singleton pattern
- * internally and persists session in cookies automatically.
- * Do NOT wrap this in useMemo or module-level singleton —
- * let the library manage its own instance.
- */
+// Module-level singleton — survives React re-renders and page navigation
+// but resets on full page refresh (which is correct behavior)
+let browserClient: ReturnType<typeof createBrowserClient<Database>> | undefined;
+
 export function createClient() {
-  return createBrowserClient<Database>(
+  if (browserClient) return browserClient;
+
+  browserClient = createBrowserClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    {
+      auth: {
+        // Store session in localStorage for persistence across refreshes
+        persistSession: true,
+        // Auto refresh token before it expires
+        autoRefreshToken: true,
+        // Detect session from URL (for OAuth callbacks)
+        detectSessionInUrl: true,
+        // Use localStorage as storage
+        storage:
+          typeof window !== "undefined" ? window.localStorage : undefined,
+      },
+    }
   );
+
+  return browserClient;
 }
 
 export function resetClient() {
-  // No-op — createBrowserClient handles cleanup internally
+  browserClient = undefined;
 }
