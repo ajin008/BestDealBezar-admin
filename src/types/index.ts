@@ -216,3 +216,13 @@ export interface OrderFilters {
   date_to: string;
   page: number;
 }
+
+export interface StoreSettings {
+  id: string;
+  flat_delivery_charge: number;
+  free_delivery_above: number;
+  default_tax_percent: number;
+  is_cod_enabled: boolean;
+  is_online_payment_enabled: boolean;
+  updated_at: string;
+}

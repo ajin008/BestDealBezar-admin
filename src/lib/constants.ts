@@ -14,11 +14,13 @@ export const ROUTES = {
   DASHBOARD: "/dashboard",
   PRODUCTS: "/products",
   PRODUCT_NEW: "/products/new",
+
   PRODUCT_EDIT: (id: string) => `/products/${id}`,
   CATEGORIES: "/categories",
   ORDERS: "/orders",
   ORDER_DETAIL: (id: string) => `/orders/${id}`,
   COUPONS: "/coupons",
+  SETTINGS: "/settings",
 } as const;
 
 // ─── Order Statuses ────────────────────────────────────────────────────────────

@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES, APP_CONFIG } from "@/lib/constants";
+import { Settings } from "lucide-react";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -49,6 +50,11 @@ const NAV_ITEMS: NavItem[] = [
     href: ROUTES.COUPONS,
     icon: Ticket,
   },
+  {
+    label: "Settings",
+    href: ROUTES.SETTINGS,
+    icon: Settings,
+  },
 ];
 
 // ─── Component ─────────────────────────────────────────────────────────────────
@@ -64,7 +70,7 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="flex h-screen w-[220px] flex-col border-r border-gray-200 bg-white">
+    <aside className="flex h-screen w-55 flex-col border-r border-gray-200 bg-white">
       {/* ── Brand ──────────────────────────────────────────────────────────── */}
       <div className="flex items-center gap-3 px-5 py-3.5 border-b border-gray-200">
         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gray-900 shrink-0">

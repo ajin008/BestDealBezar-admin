@@ -6,12 +6,6 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
-export interface CategoryJoin {
-  id: string;
-  name: string;
-  slug: string;
-}
-
 export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
@@ -316,6 +310,37 @@ export type Database = {
         ];
       };
 
+      store_settings: {
+        Row: {
+          id: string;
+          flat_delivery_charge: number;
+          free_delivery_above: number;
+          default_tax_percent: number;
+          is_cod_enabled: boolean;
+          is_online_payment_enabled: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          flat_delivery_charge?: number;
+          free_delivery_above?: number;
+          default_tax_percent?: number;
+          is_cod_enabled?: boolean;
+          is_online_payment_enabled?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          flat_delivery_charge?: number;
+          free_delivery_above?: number;
+          default_tax_percent?: number;
+          is_cod_enabled?: boolean;
+          is_online_payment_enabled?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
+
       products: {
         Row: {
           actual_price: number;
@@ -336,7 +361,7 @@ export type Database = {
           tax_percent: number;
           unit: string;
           updated_at: string;
-          category?: CategoryJoin | null;
+
           weight_grams: number | null;
         };
         Insert: {
