@@ -46,39 +46,79 @@ export function useAuth(): UseAuthReturn {
   const fetchAdminProfile = useCallback(
     async (userId: string): Promise<AdminProfile | null> => {
       try {
-        const { data, error } = await supabase
-          .from("admin_profiles")
-          .select("*")
-          .eq("id", userId)
-          .single();
+        console.log("[fetchAdminProfile] calling API for:", userId);
 
-        if (error || !data) {
-          console.error("[useAuth] fetchAdminProfile:", error?.message);
+        const response = await fetch("/api/auth/profile", {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          // Important — send cookies with the request
+          credentials: "include",
+        });
+
+        console.log("[fetchAdminProfile] response status:", response.status);
+
+        if (!response.ok) {
+          console.error("[fetchAdminProfile] API error:", response.status);
           return null;
         }
-        return data as AdminProfile;
-      } catch {
+
+        const { profile } = await response.json();
+        console.log("[fetchAdminProfile] profile:", profile);
+        return profile as AdminProfile;
+      } catch (err) {
+        console.error("[fetchAdminProfile] exception:", err);
         return null;
       }
     },
-    [supabase]
+    [] // No supabase dependency — uses fetch API instead
   );
 
-  // ─── Auth listener — single source of truth ───────────────────────────────
-  // onAuthStateChange fires INITIAL_SESSION on mount with the existing session
-  // This replaces the manual getSession() call entirely
+  // ─── Core auth handler ────────────────────────────────────────────────────
+  // Shared between onAuthStateChange and getSession fallback
+
+  const handleSession = useCallback(
+    async (userId: string, userObj: object) => {
+      // Already have this user loaded — skip
+      const state = useAuthStore.getState();
+      if (state.user?.id === userId && state.adminProfile) {
+        setInitialized(true);
+        return;
+      }
+
+      const profile = await fetchAdminProfile(userId);
+
+      if (!profile || !profile.is_active) {
+        await supabase.auth.signOut();
+        reset();
+        return;
+      }
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      setUser(userObj as any);
+      setAdminProfile(profile);
+      setInitialized(true);
+    },
+    [
+      supabase,
+      fetchAdminProfile,
+      setUser,
+      setAdminProfile,
+      setInitialized,
+      reset,
+    ]
+  );
+
+  // ─── Initialize ───────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (hasInitialized.current) return;
-    hasInitialized.current = true;
-
     let isMounted = true;
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!isMounted) return;
-
       console.log(
         "[useAuth] event:",
         event,
@@ -86,32 +126,18 @@ export function useAuth(): UseAuthReturn {
         session?.user?.id ?? "none"
       );
 
-      // INITIAL_SESSION fires on every mount with the current session state
-      // SIGNED_IN fires after login
-      // TOKEN_REFRESHED fires when JWT is auto-refreshed
-      // SIGNED_OUT fires after logout
-      if (event === "SIGNED_OUT") {
+      if (event === "SIGNED_OUT" || !session?.user) {
         reset();
         return;
       }
 
-      if (!session?.user) {
-        // No session — mark initialized so UI stops showing skeleton
-        reset();
-        return;
-      }
+      // ── Set user immediately — don't wait for profile ──────────────────────
+      // This unblocks the UI right away
+      setUser(session.user);
+      setInitialized(true); // ← MOVE THIS UP — unblock UI immediately
 
-      // We have a session — check if we already have this user's profile loaded
-      const state = useAuthStore.getState();
-      if (state.user?.id === session.user.id && state.adminProfile) {
-        // Already have everything — just mark initialized
-        setInitialized(true);
-        return;
-      }
-
-      // Fetch admin profile
+      // Fetch profile in background
       const profile = await fetchAdminProfile(session.user.id);
-
       if (!isMounted) return;
 
       if (!profile || !profile.is_active) {
@@ -120,9 +146,15 @@ export function useAuth(): UseAuthReturn {
         return;
       }
 
-      setUser(session.user);
-      setAdminProfile(profile);
-      setInitialized(true);
+      setAdminProfile(profile); // ← update profile when ready
+    });
+
+    // Fallback
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!isMounted || !session?.user) {
+        if (isMounted) reset();
+        return;
+      }
     });
 
     return () => {

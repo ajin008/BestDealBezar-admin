@@ -74,4 +74,4 @@ export const selectAdminProfile = (state: AuthState) => state.adminProfile;
 export const selectIsLoading = (state: AuthState) => state.isLoading;
 export const selectIsInitialized = (state: AuthState) => state.isInitialized;
 export const selectIsAuthenticated = (state: AuthState) =>
-  !!state.user && !!state.adminProfile;
+  state.isInitialized && !!state.user;
