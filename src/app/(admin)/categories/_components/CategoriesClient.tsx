@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import {
   DndContext,
   closestCenter,
@@ -18,7 +18,7 @@ import {
   arrayMove,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Plus, Pencil, Trash2 } from "lucide-react";
+import { GripVertical, Plus, Pencil, Trash2, Upload, X } from "lucide-react";
 import { useCategories } from "@/hooks/useCategories";
 import { Button } from "@/components/ui/Button";
 import { Toggle } from "@/components/ui/Toggle";
@@ -27,8 +27,6 @@ import { Input } from "@/components/ui/Input";
 import { slugify } from "@/lib/utils";
 import type { Category, CategoryFormData } from "@/types";
 
-// ─── Default form ──────────────────────────────────────────────────────────────
-
 const DEFAULT_FORM: CategoryFormData = {
   name: "",
   slug: "",
@@ -36,8 +34,6 @@ const DEFAULT_FORM: CategoryFormData = {
   is_active: true,
   sort_order: 0,
 };
-
-// ─── Main Component ────────────────────────────────────────────────────────────
 
 export function CategoriesClient() {
   const {
@@ -48,6 +44,8 @@ export function CategoriesClient() {
     updateCategory,
     deleteCategory,
     toggleActive,
+    uploadCategoryImage,
+    deleteCategoryImage,
     refetch,
   } = useCategories();
 
@@ -56,10 +54,12 @@ export function CategoriesClient() {
   const [form, setForm] = useState<CategoryFormData>(DEFAULT_FORM);
   const [formErrors, setFormErrors] = useState<Partial<CategoryFormData>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [pendingImageFile, setPendingImageFile] = useState<File | null>(null);
   const [generalError, setGeneralError] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-
-  // ─── DnD sensors ────────────────────────────────────────────────────────────
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -68,40 +68,32 @@ export function CategoriesClient() {
     })
   );
 
-  // ─── Drag end — reorder categories ──────────────────────────────────────────
-
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
       if (!over || active.id === over.id) return;
-
       const oldIndex = categories.findIndex((c) => c.id === active.id);
       const newIndex = categories.findIndex((c) => c.id === over.id);
       const reordered = arrayMove(categories, oldIndex, newIndex);
-
-      // Update sort_order for all reordered categories
       await Promise.all(
         reordered.map((cat, index) =>
           updateCategory(cat.id, { sort_order: index })
         )
       );
-
       refetch();
     },
     [categories, updateCategory, refetch]
   );
-
-  // ─── Open modal for add ──────────────────────────────────────────────────────
 
   const handleAddClick = useCallback(() => {
     setEditingCategory(null);
     setForm({ ...DEFAULT_FORM, sort_order: categories.length });
     setFormErrors({});
     setGeneralError(null);
+    setImagePreview(null);
+    setPendingImageFile(null);
     setIsModalOpen(true);
   }, [categories.length]);
-
-  // ─── Open modal for edit ─────────────────────────────────────────────────────
 
   const handleEditClick = useCallback((category: Category) => {
     setEditingCategory(category);
@@ -112,12 +104,12 @@ export function CategoriesClient() {
       is_active: category.is_active,
       sort_order: category.sort_order,
     });
+    setImagePreview(category.image_url);
+    setPendingImageFile(null);
     setFormErrors({});
     setGeneralError(null);
     setIsModalOpen(true);
   }, []);
-
-  // ─── Close modal ─────────────────────────────────────────────────────────────
 
   const handleCloseModal = useCallback(() => {
     setIsModalOpen(false);
@@ -125,18 +117,15 @@ export function CategoriesClient() {
     setForm(DEFAULT_FORM);
     setFormErrors({});
     setGeneralError(null);
+    setImagePreview(null);
+    setPendingImageFile(null);
   }, []);
-
-  // ─── Form field change ───────────────────────────────────────────────────────
 
   const handleFormChange = useCallback(
     (field: keyof CategoryFormData, value: string | boolean | null) => {
       setForm((prev) => {
         const updated = { ...prev, [field]: value };
-        // Auto-generate slug from name
-        if (field === "name") {
-          updated.slug = slugify(value as string);
-        }
+        if (field === "name") updated.slug = slugify(value as string);
         return updated;
       });
       if (field in formErrors) {
@@ -146,7 +135,47 @@ export function CategoriesClient() {
     [formErrors]
   );
 
-  // ─── Validate ────────────────────────────────────────────────────────────────
+  // ─── Image selection ──────────────────────────────────────────────────────
+
+  const handleImageSelect = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      // Validate file type and size
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+        setGeneralError("Only PNG, JPG, or WebP images allowed");
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setGeneralError("Image must be under 5MB");
+        return;
+      }
+
+      setPendingImageFile(file);
+
+      // Show local preview immediately
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target?.result as string);
+      };
+      reader.readAsDataURL(file);
+
+      // Reset input
+      e.target.value = "";
+    },
+    []
+  );
+
+  // ─── Remove image ─────────────────────────────────────────────────────────
+
+  const handleRemoveImage = useCallback(() => {
+    setImagePreview(null);
+    setPendingImageFile(null);
+    setForm((prev) => ({ ...prev, image_url: null }));
+  }, []);
+
+  // ─── Validate ─────────────────────────────────────────────────────────────
 
   function validate(): boolean {
     const errors: Partial<CategoryFormData> = {};
@@ -156,18 +185,46 @@ export function CategoriesClient() {
     return Object.keys(errors).length === 0;
   }
 
-  // ─── Save category ───────────────────────────────────────────────────────────
+  // ─── Save ─────────────────────────────────────────────────────────────────
 
   const handleSave = useCallback(async () => {
     if (!validate()) return;
-
     setIsSaving(true);
     setGeneralError(null);
 
     try {
+      let imageUrl = form.image_url;
+
+      // Upload new image if selected
+      if (pendingImageFile) {
+        setIsUploadingImage(true);
+
+        // Delete old image if replacing
+        if (editingCategory?.image_url) {
+          await deleteCategoryImage(editingCategory.image_url);
+        }
+
+        const uploadResult = await uploadCategoryImage(pendingImageFile);
+        setIsUploadingImage(false);
+
+        if (uploadResult.error) {
+          setGeneralError(uploadResult.error);
+          return;
+        }
+        imageUrl = uploadResult.data;
+      }
+
+      // If image was removed (imagePreview is null but editingCategory had an image)
+      if (!imagePreview && editingCategory?.image_url && !pendingImageFile) {
+        await deleteCategoryImage(editingCategory.image_url);
+        imageUrl = null;
+      }
+
+      const finalForm = { ...form, image_url: imageUrl };
+
       const result = editingCategory
-        ? await updateCategory(editingCategory.id, form)
-        : await createCategory(form);
+        ? await updateCategory(editingCategory.id, finalForm)
+        : await createCategory(finalForm);
 
       if (result.error) {
         setGeneralError(result.error);
@@ -177,26 +234,28 @@ export function CategoriesClient() {
       handleCloseModal();
     } finally {
       setIsSaving(false);
+      setIsUploadingImage(false);
     }
-  }, [form, editingCategory, createCategory, updateCategory, handleCloseModal]);
-
-  // ─── Delete category ─────────────────────────────────────────────────────────
+  }, [
+    form,
+    imagePreview,
+    pendingImageFile,
+    editingCategory,
+    createCategory,
+    updateCategory,
+    uploadCategoryImage,
+    deleteCategoryImage,
+    handleCloseModal,
+  ]);
 
   const handleDelete = useCallback(
     async (id: string) => {
-      if (
-        !confirm(
-          "Delete this category? Products in this category will become uncategorized."
-        )
-      )
+      if (!confirm("Delete this category? Products will become uncategorized."))
         return;
-
       setDeletingId(id);
       try {
         const result = await deleteCategory(id);
-        if (result.error) {
-          alert(result.error);
-        }
+        if (result.error) alert(result.error);
       } finally {
         setDeletingId(null);
       }
@@ -204,11 +263,8 @@ export function CategoriesClient() {
     [deleteCategory]
   );
 
-  // ─── Render ──────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex flex-col gap-6">
-      {/* ── Page header ────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">Categories</h2>
@@ -222,14 +278,12 @@ export function CategoriesClient() {
         </Button>
       </div>
 
-      {/* ── Error ──────────────────────────────────────────────────────────── */}
       {error && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {error}
         </div>
       )}
 
-      {/* ── Categories list ────────────────────────────────────────────────── */}
       <div className="rounded-xl border border-gray-200 bg-white overflow-hidden">
         {isLoading ? (
           <div className="flex items-center justify-center py-16">
@@ -271,7 +325,7 @@ export function CategoriesClient() {
         )}
       </div>
 
-      {/* ── Add / Edit Modal ───────────────────────────────────────────────── */}
+      {/* ── Modal ──────────────────────────────────────────────────────────── */}
       <Modal
         isOpen={isModalOpen}
         onClose={handleCloseModal}
@@ -284,6 +338,57 @@ export function CategoriesClient() {
               {generalError}
             </div>
           )}
+
+          {/* ── Cover image ─────────────────────────────────────────────────── */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">
+              Cover image
+            </label>
+
+            {imagePreview ? (
+              // Show preview with remove button
+              <div className="relative rounded-xl overflow-hidden border border-gray-200 bg-gray-50">
+                <img
+                  src={imagePreview}
+                  alt="Category cover"
+                  className="w-full h-40 object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={handleRemoveImage}
+                  className="absolute top-2 right-2 rounded-full bg-red-500 p-1.5 text-white hover:bg-red-600 transition-colors shadow-sm"
+                  aria-label="Remove image"
+                >
+                  <X size={14} />
+                </button>
+                {pendingImageFile && (
+                  <span className="absolute bottom-2 left-2 rounded-full bg-blue-500/90 px-2 py-0.5 text-xs text-white">
+                    New
+                  </span>
+                )}
+              </div>
+            ) : (
+              // Upload area
+              <label className="flex flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-gray-300 bg-gray-50 p-6 cursor-pointer hover:border-gray-400 hover:bg-gray-100 transition-colors">
+                <Upload size={20} className="text-gray-400" />
+                <div className="text-center">
+                  <p className="text-sm font-medium text-gray-700">
+                    Click to upload image
+                  </p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    PNG, JPG, WebP up to 5MB
+                  </p>
+                </div>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="sr-only"
+                  onChange={handleImageSelect}
+                />
+              </label>
+            )}
+          </div>
 
           <Input
             label="Name"
@@ -333,7 +438,7 @@ export function CategoriesClient() {
               className="flex-1"
               onClick={handleSave}
               isLoading={isSaving}
-              loadingText="Saving..."
+              loadingText={isUploadingImage ? "Uploading..." : "Saving..."}
             >
               {editingCategory ? "Save changes" : "Create category"}
             </Button>
@@ -382,7 +487,6 @@ function SortableCategoryRow({
       style={style}
       className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 transition-colors"
     >
-      {/* Drag handle */}
       <button
         type="button"
         {...attributes}
@@ -400,6 +504,7 @@ function SortableCategoryRow({
             src={category.image_url}
             alt={category.name}
             className="h-full w-full object-cover"
+            loading="lazy"
           />
         ) : (
           <div className="h-full w-full flex items-center justify-center">
@@ -410,7 +515,6 @@ function SortableCategoryRow({
         )}
       </div>
 
-      {/* Name + slug */}
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium text-gray-900 truncate">
           {category.name}
@@ -418,7 +522,6 @@ function SortableCategoryRow({
         <p className="text-xs text-gray-400 truncate">/{category.slug}</p>
       </div>
 
-      {/* Active toggle */}
       <div className="flex items-center gap-1.5">
         <span className="text-xs text-gray-500 hidden sm:inline">Active</span>
         <Toggle
@@ -427,7 +530,6 @@ function SortableCategoryRow({
         />
       </div>
 
-      {/* Edit button */}
       <button
         type="button"
         onClick={() => onEdit(category)}
@@ -437,7 +539,6 @@ function SortableCategoryRow({
         <Pencil size={15} />
       </button>
 
-      {/* Delete button */}
       <button
         type="button"
         onClick={() => onDelete(category.id)}

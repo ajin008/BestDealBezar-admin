@@ -1,5 +1,4 @@
 //cspell:disable
-
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
@@ -7,9 +6,6 @@ import { createClient } from "@/lib/supabase/client";
 import type { Database } from "@/types/database";
 import type { Category, CategoryFormData, ApiResponse } from "@/types";
 
-// Use the auto-generated row type directly
-type CategoryRow = Database["public"]["Tables"]["categories"]["Row"];
-type CategoryInsert = Database["public"]["Tables"]["categories"]["Insert"];
 type CategoryUpdate = Database["public"]["Tables"]["categories"]["Update"];
 
 interface UseCategoriesReturn {
@@ -26,6 +22,8 @@ interface UseCategoriesReturn {
     id: string,
     is_active: boolean
   ) => Promise<ApiResponse<Category>>;
+  uploadCategoryImage: (file: File) => Promise<ApiResponse<string>>;
+  deleteCategoryImage: (url: string) => Promise<ApiResponse<null>>;
   refetch: () => Promise<void>;
 }
 
@@ -37,7 +35,6 @@ export function useCategories(): UseCategoriesReturn {
 
   useEffect(() => {
     let isMounted = true;
-
     async function load() {
       setIsLoading(true);
       setError(null);
@@ -54,12 +51,10 @@ export function useCategories(): UseCategoriesReturn {
         const message =
           err instanceof Error ? err.message : "Failed to fetch categories";
         setError(message);
-        console.error("[useCategories] load error:", err);
       } finally {
         if (isMounted) setIsLoading(false);
       }
     }
-
     load();
     return () => {
       isMounted = false;
@@ -80,7 +75,6 @@ export function useCategories(): UseCategoriesReturn {
       const message =
         err instanceof Error ? err.message : "Failed to fetch categories";
       setError(message);
-      console.error("[useCategories] fetchCategories error:", err);
     } finally {
       setIsLoading(false);
     }
@@ -89,12 +83,6 @@ export function useCategories(): UseCategoriesReturn {
   const createCategory = useCallback(
     async (data: CategoryFormData): Promise<ApiResponse<Category>> => {
       try {
-        console.log("[createCategory] attempting with data:", data);
-        console.log(
-          "[createCategory] supabase url:",
-          process.env.NEXT_PUBLIC_SUPABASE_URL
-        );
-
         const { data: created, error } = await supabase
           .from("categories")
           .insert({
@@ -106,16 +94,12 @@ export function useCategories(): UseCategoriesReturn {
           })
           .select()
           .single();
-
-        console.log("[createCategory] result:", { created, error });
-
         if (error) throw error;
         setCategories((prev) => [...prev, created]);
         return { data: created, error: null };
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Failed to create category";
-        console.error("[useCategories] createCategory error:", err);
         return { data: null, error: message };
       }
     },
@@ -142,7 +126,6 @@ export function useCategories(): UseCategoriesReturn {
           .eq("id", id)
           .select()
           .single();
-
         if (error) throw error;
         setCategories((prev) =>
           prev.map((cat) => (cat.id === id ? (updated as Category) : cat))
@@ -151,7 +134,6 @@ export function useCategories(): UseCategoriesReturn {
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Failed to update category";
-        console.error("[useCategories] updateCategory error:", err);
         return { data: null, error: message };
       }
     },
@@ -171,7 +153,6 @@ export function useCategories(): UseCategoriesReturn {
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Failed to delete category";
-        console.error("[useCategories] deleteCategory error:", err);
         return { data: null, error: message };
       }
     },
@@ -201,7 +182,64 @@ export function useCategories(): UseCategoriesReturn {
         );
         const message =
           err instanceof Error ? err.message : "Failed to update category";
-        console.error("[useCategories] toggleActive error:", err);
+        return { data: null, error: message };
+      }
+    },
+    [supabase]
+  );
+
+  // ─── Upload category image ─────────────────────────────────────────────────
+
+  const uploadCategoryImage = useCallback(
+    async (file: File): Promise<ApiResponse<string>> => {
+      try {
+        const ext = file.name.split(".").pop();
+        const filename = `${Date.now()}-${Math.random()
+          .toString(36)
+          .slice(2)}.${ext}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from("category-image")
+          .upload(filename, file, {
+            cacheControl: "31536000",
+            upsert: false,
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: urlData } = supabase.storage
+          .from("category-image")
+          .getPublicUrl(filename);
+
+        return { data: urlData.publicUrl, error: null };
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to upload image";
+        console.error("[useCategories] uploadCategoryImage error:", err);
+        return { data: null, error: message };
+      }
+    },
+    [supabase]
+  );
+
+  // ─── Delete category image ─────────────────────────────────────────────────
+
+  const deleteCategoryImage = useCallback(
+    async (url: string): Promise<ApiResponse<null>> => {
+      try {
+        const filename = url.split("/category-image/")[1];
+        if (!filename) return { data: null, error: null };
+
+        const { error } = await supabase.storage
+          .from("category-image")
+          .remove([filename]);
+
+        if (error) throw error;
+        return { data: null, error: null };
+      } catch (err: unknown) {
+        const message =
+          err instanceof Error ? err.message : "Failed to delete image";
+        console.error("[useCategories] deleteCategoryImage error:", err);
         return { data: null, error: message };
       }
     },
@@ -216,6 +254,8 @@ export function useCategories(): UseCategoriesReturn {
     updateCategory,
     deleteCategory,
     toggleActive,
+    uploadCategoryImage,
+    deleteCategoryImage,
     refetch: fetchCategories,
   };
 }
