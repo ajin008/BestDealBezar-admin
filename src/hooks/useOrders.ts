@@ -223,36 +223,65 @@ export function useOrder(id: string): UseOrderReturn {
   const updateStatus = useCallback(
     async (id: string, status: string): Promise<ApiResponse<Order>> => {
       try {
+        // Step 1 — fetch current order payment_method fresh from DB
+        // Don't rely on closure — order state might be stale
+        const { data: currentOrder } = await supabase
+          .from("orders")
+          .select("payment_method")
+          .eq("id", id)
+          .single();
+
+        const isCOD = currentOrder?.payment_method === "cod";
+        const isDelivered = status === ORDER_STATUS.DELIVERED;
+
+        // Step 2 — build update data
         const updateData: OrderUpdate = { status };
 
-        if (
-          status === ORDER_STATUS.DELIVERED &&
-          order?.payment_method === "cod"
-        ) {
+        // Auto mark payment as paid for COD on delivery
+        if (isCOD && isDelivered) {
           updateData.payment_status = "paid";
         }
 
+        // Step 3 — update the order
         const { data, error } = await supabase
           .from("orders")
           .update(updateData)
           .eq("id", id)
-          .select()
+          .select(`*, items:order_items(*)`)
           .single();
 
         if (error) throw error;
 
-        if (
-          status === ORDER_STATUS.DELIVERED &&
-          order?.payment_method === "cod"
-        ) {
-          await supabase
+        // Step 4 — update payments table if COD delivered
+        if (isCOD && isDelivered) {
+          // Check if a payments row exists for this order
+          const { data: existingPayment } = await supabase
             .from("payments")
-            .update({
+            .select("id")
+            .eq("order_id", id)
+            .single();
+
+          if (existingPayment) {
+            // Update existing payment row
+            await supabase
+              .from("payments")
+              .update({
+                status: "paid",
+                collected_at: new Date().toISOString(),
+              })
+              .eq("order_id", id);
+          } else {
+            // Create payment row — COD orders often don't have one
+            await supabase.from("payments").insert({
+              order_id: id,
+              method: "cod",
               status: "paid",
+              amount: data.total_amount,
               collected_at: new Date().toISOString(),
-            })
-            .eq("order_id", id);
+            });
+          }
         }
+
         setOrder(data as unknown as Order);
         return { data: data as unknown as Order, error: null };
       } catch (err: unknown) {
@@ -262,7 +291,7 @@ export function useOrder(id: string): UseOrderReturn {
         return { data: null, error: message };
       }
     },
-    [supabase]
+    [supabase] // eslint-disable-line react-hooks/exhaustive-deps
   );
 
   // ─── Update order notes ──────────────────────────────────────────────────────
