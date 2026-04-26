@@ -30,6 +30,7 @@ export const ORDER_STATUS = {
   CONFIRMED: "confirmed",
   OUT_FOR_DELIVERY: "out_for_delivery",
   DELIVERED: "delivered",
+  CANCELLED: "cancelled",
 } as const;
 
 export type OrderStatus = (typeof ORDER_STATUS)[keyof typeof ORDER_STATUS];
@@ -39,6 +40,7 @@ export const ORDER_STATUS_LABELS: Record<OrderStatus, string> = {
   confirmed: "Confirmed",
   out_for_delivery: "Out for Delivery",
   delivered: "Delivered",
+  cancelled: "Cancelled",
 };
 
 export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
@@ -46,6 +48,7 @@ export const ORDER_STATUS_COLORS: Record<OrderStatus, string> = {
   confirmed: "bg-blue-100 text-blue-800",
   out_for_delivery: "bg-purple-100 text-purple-800",
   delivered: "bg-green-100 text-green-800",
+  cancelled: "bg-red-100 text-red-700",
 };
 
 // ─── Payment Methods ───────────────────────────────────────────────────────────

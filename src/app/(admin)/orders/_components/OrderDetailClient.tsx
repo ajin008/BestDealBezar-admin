@@ -38,11 +38,8 @@ export function OrderDetailClient({ id }: OrderDetailClientProps) {
       if (!order) return;
       setIsUpdating(true);
       setUpdateError(null);
-
       const result = await updateStatus(order.id, newStatus);
-      if (result.error) {
-        setUpdateError(result.error);
-      }
+      if (result.error) setUpdateError(result.error);
       setIsUpdating(false);
     },
     [order, updateStatus]
@@ -57,6 +54,13 @@ export function OrderDetailClient({ id }: OrderDetailClientProps) {
     if (result.error) setUpdateError(result.error);
     setIsUpdating(false);
   }, [order, notes, updateNotes]);
+
+  // ─── Cancel order ─────────────────────────────────────────────────────────────
+
+  const handleCancelOrder = useCallback(async () => {
+    if (!confirm("Cancel this order? This cannot be undone.")) return;
+    await handleStatusUpdate("cancelled");
+  }, [handleStatusUpdate]);
 
   // ─── Loading ─────────────────────────────────────────────────────────────────
 
@@ -76,22 +80,31 @@ export function OrderDetailClient({ id }: OrderDetailClientProps) {
     );
   }
 
-  const statusColor =
-    ORDER_STATUS_COLORS[order.status as OrderStatus] ??
-    "bg-gray-100 text-gray-700";
-  const statusLabel =
-    ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status;
+  // ─── Status logic ─────────────────────────────────────────────────────────────
 
-  // Status flow: pending → confirmed → out_for_delivery → delivered
-  const statusFlow = [
+  const statusFlow: OrderStatus[] = [
     ORDER_STATUS.PENDING,
     ORDER_STATUS.CONFIRMED,
     ORDER_STATUS.OUT_FOR_DELIVERY,
     ORDER_STATUS.DELIVERED,
   ];
 
+  const isCancelled = order.status === ORDER_STATUS.CANCELLED;
+  const isDelivered = order.status === ORDER_STATUS.DELIVERED;
+  const isTerminal = isCancelled || isDelivered;
+
   const currentIndex = statusFlow.indexOf(order.status as OrderStatus);
-  const nextStatus = statusFlow[currentIndex + 1];
+  const nextStatus =
+    currentIndex >= 0 ? statusFlow[currentIndex + 1] : undefined;
+
+  const statusColor = isCancelled
+    ? ORDER_STATUS_COLORS[ORDER_STATUS.CANCELLED]
+    : ORDER_STATUS_COLORS[order.status as OrderStatus] ??
+      "bg-gray-100 text-gray-700";
+
+  const statusLabel = isCancelled
+    ? ORDER_STATUS_LABELS[ORDER_STATUS.CANCELLED]
+    : ORDER_STATUS_LABELS[order.status as OrderStatus] ?? order.status;
 
   // ─── Render ──────────────────────────────────────────────────────────────────
 
@@ -106,13 +119,29 @@ export function OrderDetailClient({ id }: OrderDetailClientProps) {
           <ArrowLeft size={16} />
           Back to orders
         </button>
+
         <div className="flex items-center gap-3">
+          {/* Status badge */}
           <span
             className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-medium ${statusColor}`}
           >
             {statusLabel}
           </span>
-          {nextStatus && (
+
+          {/* Cancel button — visible for all non-terminal statuses */}
+          {!isTerminal && (
+            <Button
+              size="sm"
+              variant="danger"
+              isLoading={isUpdating}
+              onClick={handleCancelOrder}
+            >
+              Cancel order
+            </Button>
+          )}
+
+          {/* Next status button — visible only if there's a next step */}
+          {!isTerminal && nextStatus && (
             <Button
               size="sm"
               isLoading={isUpdating}
@@ -124,9 +153,17 @@ export function OrderDetailClient({ id }: OrderDetailClientProps) {
         </div>
       </div>
 
+      {/* ── Error ────────────────────────────────────────────────────────────── */}
       {updateError && (
         <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
           {updateError}
+        </div>
+      )}
+
+      {/* ── Cancelled banner ──────────────────────────────────────────────────── */}
+      {isCancelled && (
+        <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700">
+          This order has been cancelled and cannot be updated further.
         </div>
       )}
 
@@ -143,6 +180,7 @@ export function OrderDetailClient({ id }: OrderDetailClientProps) {
                 {formatDateTime(order.created_at)}
               </p>
             </div>
+
             <div className="divide-y divide-gray-100">
               {order.items?.map((item) => (
                 <div
@@ -203,26 +241,30 @@ export function OrderDetailClient({ id }: OrderDetailClientProps) {
             </div>
           </div>
 
-          {/* Notes */}
-          <div className="rounded-xl border border-gray-200 bg-white p-6">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Notes</h3>
-            <textarea
-              value={notes || order.notes || ""}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add internal notes about this order..."
-              rows={3}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
-            />
-            <Button
-              size="sm"
-              variant="secondary"
-              className="mt-2"
-              onClick={handleNotesUpdate}
-              isLoading={isUpdating}
-            >
-              Save notes
-            </Button>
-          </div>
+          {/* Notes — hide for cancelled orders */}
+          {!isCancelled && (
+            <div className="rounded-xl border border-gray-200 bg-white p-6">
+              <h3 className="text-sm font-semibold text-gray-900 mb-3">
+                Notes
+              </h3>
+              <textarea
+                value={notes || order.notes || ""}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Add internal notes about this order..."
+                rows={3}
+                className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-900 placeholder:text-gray-400 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10 resize-none"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                className="mt-2"
+                onClick={handleNotesUpdate}
+                isLoading={isUpdating}
+              >
+                Save notes
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* ── Right — customer + payment info ──────────────────────────────── */}
