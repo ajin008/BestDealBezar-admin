@@ -2,10 +2,9 @@
 
 import { useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Eye } from "lucide-react";
+import { Search, Eye, ChevronLeft, ChevronRight } from "lucide-react";
 import { useOrders } from "@/hooks/useOrders";
 import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
 import { formatPrice, formatDateTime } from "@/lib/utils";
 import {
   ROUTES,
@@ -63,6 +62,42 @@ export function OrdersClient() {
     [router]
   );
 
+  // ─── Pagination helpers ───────────────────────────────────────────────────────
+
+  const pageSize = 15;
+  const currentPage = filters.page;
+  const startItem = (currentPage - 1) * pageSize + 1;
+  const endItem = Math.min(currentPage * pageSize, totalCount);
+  const hasPrev = currentPage > 1;
+  const hasNext = currentPage < totalPages;
+
+  // Generate page numbers to show — always show first, last, current ± 1
+  const getPageNumbers = (): (number | "...")[] => {
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    }
+
+    const pages: (number | "...")[] = [];
+    const showAround = new Set([
+      1,
+      totalPages,
+      currentPage,
+      currentPage - 1,
+      currentPage + 1,
+    ]);
+
+    let prev: number | null = null;
+    for (let i = 1; i <= totalPages; i++) {
+      if (showAround.has(i)) {
+        if (prev !== null && i - prev > 1) pages.push("...");
+        pages.push(i);
+        prev = i;
+      }
+    }
+
+    return pages;
+  };
+
   // ─── Render ──────────────────────────────────────────────────────────────────
 
   return (
@@ -101,11 +136,12 @@ export function OrdersClient() {
             onChange={handleStatusFilter}
             className="rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 focus:border-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-900/10"
           >
-            <option value="">All order statuses</option>
+            <option value="">All statuses</option>
             <option value="pending">Pending</option>
             <option value="confirmed">Confirmed</option>
             <option value="out_for_delivery">Out for Delivery</option>
             <option value="delivered">Delivered</option>
+            <option value="cancelled">Cancelled</option>
           </select>
 
           {/* Payment filter */}
@@ -143,72 +179,118 @@ export function OrdersClient() {
             </p>
           </div>
         ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-gray-200 bg-gray-50">
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Order
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">
-                  Customer
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden lg:table-cell">
-                  Date
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Status
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">
-                  Payment
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Total
-                </th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">
-                  Actions
-                </th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {orders.map((order) => (
-                <OrderRow
-                  key={order.id}
-                  order={order}
-                  onView={handleViewOrder}
-                />
-              ))}
-            </tbody>
-          </table>
+          <>
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 bg-gray-50">
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Order
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden md:table-cell">
+                    Customer
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden lg:table-cell">
+                    Date
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Status
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide hidden sm:table-cell">
+                    Payment
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Total
+                  </th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Actions
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {orders.map((order) => (
+                  <OrderRow
+                    key={order.id}
+                    order={order}
+                    onView={handleViewOrder}
+                  />
+                ))}
+              </tbody>
+            </table>
+
+            {/* ── Table footer — count + pagination ────────────────────────── */}
+            {totalCount > 0 && (
+              <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 bg-gray-50">
+                {/* Result count */}
+                <p className="text-xs text-gray-500">
+                  Showing{" "}
+                  <span className="font-medium text-gray-700">{startItem}</span>
+                  {" – "}
+                  <span className="font-medium text-gray-700">{endItem}</span>
+                  {" of "}
+                  <span className="font-medium text-gray-700">
+                    {totalCount}
+                  </span>
+                  {" orders"}
+                </p>
+
+                {/* Page controls */}
+                {totalPages > 1 && (
+                  <div className="flex items-center gap-1">
+                    {/* Prev */}
+                    <button
+                      onClick={() => setFilters({ page: currentPage - 1 })}
+                      disabled={!hasPrev || isLoading}
+                      className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Previous page"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+
+                    {/* Page numbers */}
+                    {getPageNumbers().map((page, index) =>
+                      page === "..." ? (
+                        <span
+                          key={`ellipsis-${index}`}
+                          className="flex items-center justify-center h-8 w-8 text-xs text-gray-400"
+                        >
+                          …
+                        </span>
+                      ) : (
+                        <button
+                          key={page}
+                          onClick={() => setFilters({ page: page as number })}
+                          disabled={isLoading}
+                          className={`flex items-center justify-center h-8 w-8 rounded-lg text-xs font-medium transition-colors disabled:cursor-not-allowed ${
+                            page === currentPage
+                              ? "bg-gray-900 text-white"
+                              : "text-gray-600 hover:bg-gray-100 hover:text-gray-900"
+                          }`}
+                          aria-label={`Page ${page}`}
+                          aria-current={
+                            page === currentPage ? "page" : undefined
+                          }
+                        >
+                          {page}
+                        </button>
+                      )
+                    )}
+
+                    {/* Next */}
+                    <button
+                      onClick={() => setFilters({ page: currentPage + 1 })}
+                      disabled={!hasNext || isLoading}
+                      className="flex items-center justify-center h-8 w-8 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-900 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                      aria-label="Next page"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </>
         )}
       </div>
-
-      {/* ── Pagination ───────────────────────────────────────────────────────── */}
-      {totalCount > 15 && (
-        <div className="flex items-center justify-between text-sm text-gray-600">
-          <p>
-            Showing {(filters.page - 1) * 15 + 1}–
-            {Math.min(filters.page * 15, totalCount)} of {totalCount}
-          </p>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={filters.page === 1}
-              onClick={() => setFilters({ page: filters.page - 1 })}
-            >
-              Previous
-            </Button>
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={filters.page >= totalPages}
-              onClick={() => setFilters({ page: filters.page + 1 })}
-            >
-              Next
-            </Button>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
