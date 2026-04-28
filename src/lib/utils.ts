@@ -80,3 +80,26 @@ export function slugify(str: string): string {
     .replace(/[\s_-]+/g, "-")
     .replace(/^-+|-+$/g, "");
 }
+
+// ─── GST Utilities (Inclusive pricing) ────────────────────────────────────────
+
+export function getGSTSplit(sellingPrice: number, taxPercent: number) {
+  if (taxPercent <= 0) {
+    return {
+      basePrice: sellingPrice,
+      totalGST: 0,
+      cgst: 0,
+      sgst: 0,
+      halfPercent: 0,
+    };
+  }
+  const basePrice = sellingPrice / (1 + taxPercent / 100);
+  const totalGST = sellingPrice - basePrice;
+  return {
+    basePrice: Math.round(basePrice * 100) / 100,
+    totalGST: Math.round(totalGST * 100) / 100,
+    cgst: Math.round((totalGST / 2) * 100) / 100,
+    sgst: Math.round((totalGST / 2) * 100) / 100,
+    halfPercent: taxPercent / 2,
+  };
+}

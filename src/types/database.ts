@@ -14,6 +14,56 @@ export type Database = {
   };
   public: {
     Tables: {
+      addresses: {
+        Row: {
+          address_line: string;
+          city: string;
+          created_at: string | null;
+          id: string;
+          is_default: boolean | null;
+          label: string;
+          phone: string;
+          pincode: string;
+          profile_id: string;
+          recipient_name: string;
+          updated_at: string | null;
+        };
+        Insert: {
+          address_line: string;
+          city?: string;
+          created_at?: string | null;
+          id?: string;
+          is_default?: boolean | null;
+          label?: string;
+          phone: string;
+          pincode: string;
+          profile_id: string;
+          recipient_name: string;
+          updated_at?: string | null;
+        };
+        Update: {
+          address_line?: string;
+          city?: string;
+          created_at?: string | null;
+          id?: string;
+          is_default?: boolean | null;
+          label?: string;
+          phone?: string;
+          pincode?: string;
+          profile_id?: string;
+          recipient_name?: string;
+          updated_at?: string | null;
+        };
+        Relationships: [
+          {
+            foreignKeyName: "addresses_profile_id_fkey";
+            columns: ["profile_id"];
+            isOneToOne: false;
+            referencedRelation: "profiles";
+            referencedColumns: ["id"];
+          }
+        ];
+      };
       admin_profiles: {
         Row: {
           created_at: string;
@@ -309,38 +359,6 @@ export type Database = {
           }
         ];
       };
-
-      store_settings: {
-        Row: {
-          id: string;
-          flat_delivery_charge: number;
-          free_delivery_above: number;
-          default_tax_percent: number;
-          is_cod_enabled: boolean;
-          is_online_payment_enabled: boolean;
-          updated_at: string;
-        };
-        Insert: {
-          id?: string;
-          flat_delivery_charge?: number;
-          free_delivery_above?: number;
-          default_tax_percent?: number;
-          is_cod_enabled?: boolean;
-          is_online_payment_enabled?: boolean;
-          updated_at?: string;
-        };
-        Update: {
-          id?: string;
-          flat_delivery_charge?: number;
-          free_delivery_above?: number;
-          default_tax_percent?: number;
-          is_cod_enabled?: boolean;
-          is_online_payment_enabled?: boolean;
-          updated_at?: string;
-        };
-        Relationships: [];
-      };
-
       products: {
         Row: {
           actual_price: number;
@@ -361,7 +379,6 @@ export type Database = {
           tax_percent: number;
           unit: string;
           updated_at: string;
-
           weight_grams: number | null;
         };
         Insert: {
@@ -416,12 +433,79 @@ export type Database = {
           }
         ];
       };
+      profiles: {
+        Row: {
+          avatar_url: string | null;
+          created_at: string | null;
+          email: string | null;
+          id: string;
+          name: string | null;
+          phone: string | null;
+          updated_at: string | null;
+        };
+        Insert: {
+          avatar_url?: string | null;
+          created_at?: string | null;
+          email?: string | null;
+          id: string;
+          name?: string | null;
+          phone?: string | null;
+          updated_at?: string | null;
+        };
+        Update: {
+          avatar_url?: string | null;
+          created_at?: string | null;
+          email?: string | null;
+          id?: string;
+          name?: string | null;
+          phone?: string | null;
+          updated_at?: string | null;
+        };
+        Relationships: [];
+      };
+      store_settings: {
+        Row: {
+          default_tax_percent: number;
+          flat_delivery_charge: number;
+          free_delivery_above: number;
+          id: string;
+          is_cod_enabled: boolean;
+          is_online_payment_enabled: boolean;
+          updated_at: string;
+        };
+        Insert: {
+          default_tax_percent?: number;
+          flat_delivery_charge?: number;
+          free_delivery_above?: number;
+          id?: string;
+          is_cod_enabled?: boolean;
+          is_online_payment_enabled?: boolean;
+          updated_at?: string;
+        };
+        Update: {
+          default_tax_percent?: number;
+          flat_delivery_charge?: number;
+          free_delivery_above?: number;
+          id?: string;
+          is_cod_enabled?: boolean;
+          is_online_payment_enabled?: boolean;
+          updated_at?: string;
+        };
+        Relationships: [];
+      };
     };
     Views: {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      decrement_stock: {
+        Args: { product_id: string; qty: number };
+        Returns: undefined;
+      };
+      increment_stock: {
+        Args: { product_id: string; qty: number };
+        Returns: undefined;
+      };
     };
     Enums: {
       [_ in never]: never;
